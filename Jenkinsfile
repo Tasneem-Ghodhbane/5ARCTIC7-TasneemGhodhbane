@@ -39,6 +39,32 @@ pipeline {
                 dir('backend') { sh 'mvn package -DskipTests' }
             }
         }
+
+        stage('Docker Build') {
+            steps {
+                sh 'docker compose build'
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                                  usernameVariable: 'DH_USER',
+                                                  passwordVariable: 'DH_PASS')]) {
+                    sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
+                    sh 'docker compose push backend frontend'
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh 'docker compose down || true'
+                sh 'docker compose up -d'
+                sh 'docker compose ps'
+            }
+        }
+
     }
 
     post {
