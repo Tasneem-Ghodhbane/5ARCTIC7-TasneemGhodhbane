@@ -8,7 +8,6 @@ pipeline {
 
     stages {
 
-        // ---------- CI ----------
         stage('Git') {
             steps { checkout scm }
         }
@@ -19,16 +18,6 @@ pipeline {
             }
         }
 
-        stage('SonarQube') {
-            steps {
-                dir('backend') {
-                    withSonarQubeEnv('SonarQube') {
-                        sh 'mvn sonar:sonar'
-                    }
-                }
-            }
-        }
-
         stage('Test') {
             steps {
                 dir('backend') { sh 'mvn test' }
@@ -36,6 +25,16 @@ pipeline {
             post {
                 always {
                     junit 'backend/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('SonarQube') {
+            steps {
+                dir('backend') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn sonar:sonar'
+                    }
                 }
             }
         }
