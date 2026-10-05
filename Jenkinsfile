@@ -1,43 +1,50 @@
 pipeline {
     agent any
 
+    environment {
+        BACKEND_IMAGE  = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-backend:latest'
+        FRONTEND_IMAGE = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-frontend:latest'
+    }
+
     stages {
-        stage('Checkout') {
+
+        // ---------- CI ----------
+        stage('Git') {
             steps { checkout scm }
         }
 
-        stage('Maven Clean & Compile') {
+        stage('Compile') {
             steps {
                 dir('backend') { sh 'mvn clean compile' }
             }
         }
 
-        stage('Maven Test') {
-            steps {
-                dir('backend') { sh 'mvn test' }
-            }
-        }
-
-
-        stage('SonarQube Analysis') {
+        stage('SonarQube') {
             steps {
                 dir('backend') {
                     withSonarQubeEnv('SonarQube') {
-                        sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=5ARCTIC7-TasneemGhodhbane'
+                        sh 'mvn sonar:sonar'
                     }
                 }
             }
         }
 
-        stage('Maven Package') {
+        stage('Test') {
+            steps {
+                dir('backend') { sh 'mvn test' }
+            }
+        }
+
+        stage('Package') {
             steps {
                 dir('backend') { sh 'mvn package -DskipTests' }
             }
         }
 
-        stage('Docker Build') {
+        stage('Build Images') {
             steps {
-                sh 'docker compose build'
+                sh 'docker build -t $BACKEND_IMAGE ./backend'
+                sh 'docker build -t $FRONTEND_IMAGE ./frontend'
             }
         }
 
@@ -47,7 +54,8 @@ pipeline {
                                                   usernameVariable: 'DH_USER',
                                                   passwordVariable: 'DH_PASS')]) {
                     sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
-                    sh 'docker compose push backend frontend'
+                    sh 'docker push $BACKEND_IMAGE'
+                    sh 'docker push $FRONTEND_IMAGE'
                 }
             }
         }
@@ -59,12 +67,14 @@ pipeline {
                 sh 'docker compose ps'
             }
         }
-
     }
 
     post {
         success {
-            archiveArtifacts artifacts: 'backend/target/*.jar', fingerprint: true
+            archiveArtifacts artifacts: 'backend/target/*.jar, backend/target/site/jacoco/**', fingerprint: true
+        }
+        always {
+            sh 'docker logout || true'
         }
     }
 }
