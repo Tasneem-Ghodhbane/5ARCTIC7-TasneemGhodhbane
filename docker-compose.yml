@@ -1,3 +1,5 @@
+name: gestionprojets
+
 services:
 
   mysql:
