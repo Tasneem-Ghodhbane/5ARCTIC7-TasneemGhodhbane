@@ -2,8 +2,9 @@ pipeline {
     agent any
 
     environment {
-        BACKEND_IMAGE  = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-backend:latest'
-        FRONTEND_IMAGE = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-frontend:latest'
+        // CHANGED: no ":latest" here, tags are added in the stages
+        BACKEND_IMAGE  = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-backend'
+        FRONTEND_IMAGE = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-frontend'
     }
 
     stages {
@@ -47,8 +48,9 @@ pipeline {
 
         stage('Build Images') {
             steps {
-                sh 'docker build -t $BACKEND_IMAGE ./backend'
-                sh 'docker build -t $FRONTEND_IMAGE ./frontend'
+                // CHANGED: each image gets the build number AND latest
+                sh 'docker build -t $BACKEND_IMAGE:$BUILD_NUMBER -t $BACKEND_IMAGE:latest ./backend'
+                sh 'docker build -t $FRONTEND_IMAGE:$BUILD_NUMBER -t $FRONTEND_IMAGE:latest ./frontend'
             }
         }
 
@@ -58,8 +60,11 @@ pipeline {
                                                   usernameVariable: 'DH_USER',
                                                   passwordVariable: 'DH_PASS')]) {
                     sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
-                    sh 'docker push $BACKEND_IMAGE'
-                    sh 'docker push $FRONTEND_IMAGE'
+                    // CHANGED: push both tags
+                    sh 'docker push $BACKEND_IMAGE:$BUILD_NUMBER'
+                    sh 'docker push $BACKEND_IMAGE:latest'
+                    sh 'docker push $FRONTEND_IMAGE:$BUILD_NUMBER'
+                    sh 'docker push $FRONTEND_IMAGE:latest'
                 }
             }
         }
@@ -69,6 +74,20 @@ pipeline {
                 sh 'docker compose down || true'
                 sh 'docker compose up -d'
                 sh 'docker compose ps'
+            }
+        }
+
+        // NEW
+        stage('Deploy Kubernetes') {
+            steps {
+                sh 'kubectl create namespace devops --dry-run=client -o yaml | kubectl apply -f -'
+                sh 'kubectl apply -f mysql-deployment.yaml'
+                sh 'sed "s|:1.0|:$BUILD_NUMBER|" spring-deployment.yaml | kubectl apply -f -'
+                sh 'sed "s|:1.0|:$BUILD_NUMBER|" frontend-deployment.yaml | kubectl apply -f -'
+                sh 'kubectl rollout status deployment/mysql -n devops --timeout=300s'
+                sh 'kubectl rollout status deployment/spring -n devops --timeout=300s'
+                sh 'kubectl rollout status deployment/frontend -n devops --timeout=300s'
+                sh 'kubectl get pods,svc -n devops'
             }
         }
     }
