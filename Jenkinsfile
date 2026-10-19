@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     environment {
-        // CHANGED: no ":latest" here, tags are added in the stages
         BACKEND_IMAGE  = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-backend'
         FRONTEND_IMAGE = 'tasneemgh/ghodhbanetasneem-5arctic7-gestionprojets-frontend'
     }
 
     stages {
 
+        // ---------- CI ----------
         stage('Git') {
             steps { checkout scm }
         }
@@ -46,11 +46,13 @@ pipeline {
             }
         }
 
+        // ---------- CD ----------
         stage('Build Images') {
             steps {
-                // CHANGED: each image gets the build number AND latest
-                sh 'docker build -t $BACKEND_IMAGE:$BUILD_NUMBER -t $BACKEND_IMAGE:latest ./backend'
-                sh 'docker build -t $FRONTEND_IMAGE:$BUILD_NUMBER -t $FRONTEND_IMAGE:latest ./frontend'
+                retry(3) {
+                    sh 'docker build -t $BACKEND_IMAGE:$BUILD_NUMBER -t $BACKEND_IMAGE:latest ./backend'
+                    sh 'docker build -t $FRONTEND_IMAGE:$BUILD_NUMBER -t $FRONTEND_IMAGE:latest ./frontend'
+                }
             }
         }
 
@@ -59,12 +61,15 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
                                                   usernameVariable: 'DH_USER',
                                                   passwordVariable: 'DH_PASS')]) {
-                    sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
-                    // CHANGED: push both tags
-                    sh 'docker push $BACKEND_IMAGE:$BUILD_NUMBER'
-                    sh 'docker push $BACKEND_IMAGE:latest'
-                    sh 'docker push $FRONTEND_IMAGE:$BUILD_NUMBER'
-                    sh 'docker push $FRONTEND_IMAGE:latest'
+                    retry(3) {
+                        sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
+                    }
+                    retry(3) {
+                        sh 'docker push $BACKEND_IMAGE:$BUILD_NUMBER'
+                        sh 'docker push $BACKEND_IMAGE:latest'
+                        sh 'docker push $FRONTEND_IMAGE:$BUILD_NUMBER'
+                        sh 'docker push $FRONTEND_IMAGE:latest'
+                    }
                 }
             }
         }
@@ -77,7 +82,6 @@ pipeline {
             }
         }
 
-        // NEW
         stage('Deploy Kubernetes') {
             steps {
                 sh 'kubectl create namespace devops --dry-run=client -o yaml | kubectl apply -f -'
